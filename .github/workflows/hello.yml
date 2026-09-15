@@ -1,6 +1,6 @@
 name: Qlib LightGBM Baseline
 
-on: workflow_dispatch
+on: workflow_dispatc
 
 jobs:
   run-qlib:
