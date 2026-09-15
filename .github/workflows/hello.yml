@@ -29,6 +29,8 @@ jobs:
             --interval 1d
 
       - name: Run LightGBM Workflow
+        env:
+          MLFLOW_ALLOW_FILE_STORE: "true"
         run: |
           cd /tmp/qlib_src
           qrun examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
