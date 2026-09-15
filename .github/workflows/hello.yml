@@ -1,4 +1,4 @@
-name: Qlib LightGBM Baseline
+name: Qlib LightGBM Top10 All Market
 
 on: workflow_dispatch
 
@@ -33,4 +33,14 @@ jobs:
           MLFLOW_ALLOW_FILE_STORE: "true"
         run: |
           cd /tmp/qlib_src
-          qrun examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
+          python -c "
+          import yaml
+          with open('examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml') as f:
+              cfg = yaml.safe_load(f)
+          cfg['market'] = 'all'
+          cfg['strategy']['kwargs']['topk'] = 10
+          cfg['strategy']['kwargs']['n_drop'] = 5
+          with open('workflow_config_lightgbm_Alpha158_top10.yaml', 'w') as f:
+              yaml.dump(cfg, f)
+          "
+          qrun workflow_config_lightgbm_Alpha158_top10.yaml
