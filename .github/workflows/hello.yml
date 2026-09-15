@@ -33,15 +33,6 @@ jobs:
           MLFLOW_ALLOW_FILE_STORE: "true"
         run: |
           cd /tmp/qlib_src
-          python -c "
-          import yaml
-          with open('examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml') as f:
-              cfg = yaml.safe_load(f)
-          cfg['market'] = 'all'
-          cfg['task']['strategy']['kwargs']['topk'] = 10
-          cfg['task']['strategy']['kwargs']['n_drop'] = 5
-          with open('workflow_config_lightgbm_Alpha158_top10.yaml', 'w') as f:
-              yaml.dump(cfg, f)
-          print('Config written. market=all, topk=10')
-          "
-          qrun workflow_config_lightgbm_Alpha158_top10.yaml
+          sed -i 's/market: csi300/market: all/' examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
+          sed -i 's/topk: 50/topk: 10/' examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
+          qrun examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
