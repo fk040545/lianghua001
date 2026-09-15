@@ -1,4 +1,4 @@
-name: Qlib Weekly Top10
+name: Qlib csi300 Top10 5w
 
 on: workflow_dispatch
 
@@ -28,90 +28,12 @@ jobs:
             --region cn \
             --interval 1d
 
-      - name: Run Weekly Top10 Workflow
+      - name: Run csi300 Top10 Low Turnover
         env:
           MLFLOW_ALLOW_FILE_STORE: "true"
         run: |
           cd /tmp/qlib_src
-          cat > /tmp/weekly_top10.py << 'EOF'
-          import qlib
-          from qlib.config import REG_CN
-          from qlib.contrib.model.gbdt import LGBModel
-          from qlib.contrib.data.handler import Alpha158
-          from qlib.workflow import R
-          from qlib.workflow.record_temp import SignalRecord, PortAnaRecord
-          from qlib.backtest import backtest, executor
-          from qlib.contrib.evaluate import risk_analysis
-          import pandas as pd
-
-          qlib.init(provider_uri='~/.qlib/qlib_data/cn_data', region=REG_CN)
-
-          # 1. 用 Alpha158 + LightGBM 生成每日预测分数
-          handler = Alpha158(
-              instruments='all',
-              start_time='2008-01-01',
-              end_time='2020-08-01',
-              fit_start_time='2008-01-01',
-              fit_end_time='2014-12-31',
-          )
-          model = LGBModel(loss='mse', num_leaves=64)
-          model.fit(handler)
-          pred = model.predict(handler)
-
-          # 2. 把预测分数转成信号，但只在每周一调仓
-          # 方法：构造一个"调仓日历"，只在周一给出新的持仓信号
-          pred_weekly = pred.copy()
-          dates = pred_weekly.index.get_level_values('datetime').unique()
-          # 找出每周的第一个交易日
-          weekly_dates = pd.Series(dates).groupby(pd.Series(dates).dt.isocalendar().week).first().values
-          # 非周一的预测分数设为 NaN，策略会保持原持仓
-          mask = ~pred_weekly.index.get_level_values('datetime').isin(weekly_dates)
-          pred_weekly.loc[mask, :] = float('nan')
-
-          # 3. 用 Qlib 的回测框架跑
-          strategy_config = {
-              "class": "TopkDropoutStrategy",
-              "module_path": "qlib.contrib.strategy.signal_strategy",
-              "kwargs": {
-                  "signal": pred_weekly,
-                  "topk": 10,
-                  "n_drop": 10,
-              },
-          }
-          executor_config = {
-              "class": "SimulatorExecutor",
-              "module_path": "qlib.backtest.executor",
-              "kwargs": {
-                  "time_per_step": "day",
-                  "generate_portfolio_metrics": True,
-              },
-          }
-          backtest_config = {
-              "start_time": "2017-01-01",
-              "end_time": "2020-08-01",
-              "account": 100000000,
-              "benchmark": "SH000300",
-              "exchange_kwargs": {
-                  "freq": "day",
-                  "limit_threshold": 0.095,
-                  "deal_price": "close",
-                  "open_cost": 0.0005,
-                  "close_cost": 0.0015,
-                  "min_cost": 5,
-              },
-          }
-          portfolio_metric, indicator = backtest(
-              executor=executor_config,
-              strategy=strategy_config,
-              **backtest_config,
-          )
-
-          # 4. 输出回测指标
-          print("=== Weekly Top10 Backtest Results ===")
-          analysis = risk_analysis(
-              portfolio_metric['1day'].dropna(),
-              freq='day',
-          )
-          print(analysis)
-          EOF
-          python /tmp/weekly_top10.py
+          sed -i 's/market: csi300/market: csi300/' examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
+          sed -i 's/topk: 50/topk: 10/' examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
+          sed -i 's/n_drop: 5/n_drop: 2/' examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
+          qrun examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
