@@ -1,9 +1,9 @@
-name: Test Qlib Install
+name: Qlib Download Data
 
 on: workflow_dispatch
 
 jobs:
-  install-qlib:
+  download-data:
     runs-on: ubuntu-latest
     steps:
       - name: Set up Python
@@ -16,6 +16,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyqlib
 
-      - name: Verify Qlib
+      - name: Download Qlib Data
         run: |
-          python -c "import qlib; print('Qlib installed successfully!')"
+          python -m qlib.run.get_data qlib_data \
+            --target_dir ~/.qlib/qlib_data/cn_data \
+            --region cn \
+            --interval 1d
+
+      - name: Check Data
+        run: |
+          ls -lh ~/.qlib/qlib_data/cn_data
