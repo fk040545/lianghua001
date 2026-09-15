@@ -16,9 +16,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyqlib
 
+      - name: Clone Qlib Source
+        run: |
+          git clone --depth 1 https://github.com/microsoft/qlib.git /tmp/qlib_src
+
       - name: Download Qlib Data
         run: |
-          python -m qlib.run.get_data qlib_data \
+          cd /tmp/qlib_src
+          python scripts/get_data.py qlib_data \
             --target_dir ~/.qlib/qlib_data/cn_data \
             --region cn \
             --interval 1d
