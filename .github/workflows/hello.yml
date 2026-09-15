@@ -1,9 +1,9 @@
-name: Qlib Download Data
+name: Qlib LightGBM Baseline
 
 on: workflow_dispatch
 
 jobs:
-  download-data:
+  run-qlib:
     runs-on: ubuntu-latest
     steps:
       - name: Set up Python
@@ -28,6 +28,7 @@ jobs:
             --region cn \
             --interval 1d
 
-      - name: Check Data
+      - name: Run LightGBM Workflow
         run: |
-          ls -lh ~/.qlib/qlib_data/cn_data
+          cd /tmp/qlib_src
+          qrun examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
