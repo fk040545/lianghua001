@@ -1,9 +1,9 @@
-name: Qlib csi300 Top10 Monthly Approx
+name: Small Cap Weekly Top5
 
 on: workflow_dispatch
 
 jobs:
-  run-qlib:
+  run-smallcap:
     runs-on: ubuntu-latest
     steps:
       - name: Set up Python
@@ -28,11 +28,64 @@ jobs:
             --region cn \
             --interval 1d
 
-      - name: Run csi300 Top10 Monthly Approx
+      - name: Run Small Cap Weekly Top5
         env:
           MLFLOW_ALLOW_FILE_STORE: "true"
         run: |
           cd /tmp/qlib_src
-          sed -i 's/topk: 50/topk: 10/' examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
-          sed -i 's/n_drop: 5/n_drop: 1/' examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
-          qrun examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
+          cat > /tmp/smallcap.py << 'EOF'
+          import qlib
+          from qlib.config import REG_CN
+          from qlib.data import D
+          import pandas as pd
+          import numpy as np
+
+          qlib.init(provider_uri='~/.qlib/qlib_data/cn_data', region=REG_CN)
+
+          # 1. 获取全市场股票列表
+          instruments = D.instruments(market='all')
+          stock_list = D.list_instruments(instruments=instruments, start_time='2017-01-01', end_time='2020-08-01', as_list=True)
+          print(f"股票池数量: {len(stock_list)}")
+
+          # 2. 获取收盘价和成交量，计算“市值代理” = 收盘价 × 成交量
+          fields = ['$close', '$volume']
+          df = D.features(stock_list, fields, start_time='2017-01-01', end_time='2020-08-01', freq='day')
+          df.columns = ['close', 'volume']
+          df['mktcap_proxy'] = df['close'] * df['volume']
+
+          # 3. 按周分组，每周一选市值代理最小的5只
+          df = df.reset_index()
+          df['datetime'] = pd.to_datetime(df['datetime'])
+          df['week'] = df['datetime'].dt.isocalendar().week
+          df['year'] = df['datetime'].dt.year
+          df['year_week'] = df['year'].astype(str) + '-' + df['week'].astype(str)
+
+          # 每周取第一个交易日
+          weekly_dates = df.groupby('year_week')['datetime'].min().values
+
+          # 4. 构造信号：每周一，市值代理最小的5只分数设为1，其他为0
+          df['score'] = 0.0
+          for date in weekly_dates:
+              day_df = df[df['datetime'] == date]
+              if len(day_df) == 0:
+                  continue
+              # 选市值代理最小的5只
+              top5 = day_df.nsmallest(5, 'mktcap_proxy')
+              df.loc[top5.index, 'score'] = 1.0
+
+          # 5. 把信号转成Qlib需要的格式
+          signal = df.set_index(['datetime', 'instrument'])['score'].to_frame()
+          signal.columns = ['score']
+
+          # 6. 输出信号统计
+          print("信号生成完成")
+          print(f"总交易日数: {df['datetime'].nunique()}")
+          print(f"有信号的交易日数: {len(weekly_dates)}")
+          print("前5行信号:")
+          print(signal[signal['score'] > 0].head())
+
+          # 7. 保存信号，供后续回测使用
+          signal.to_pickle('/tmp/smallcap_signal.pkl')
+          print("信号已保存到 /tmp/smallcap_signal.pkl")
+          EOF
+          python /tmp/smallcap.py
