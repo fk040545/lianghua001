@@ -1,4 +1,4 @@
-name: Small Cap Weekly Top5
+name: Small Cap Weekly Top5 via AKShare
 
 on: workflow_dispatch
 
@@ -11,81 +11,41 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Qlib
+      - name: Install AKShare
         run: |
           python -m pip install --upgrade pip
-          pip install pyqlib
-
-      - name: Clone Qlib Source
-        run: |
-          git clone --depth 1 https://github.com/microsoft/qlib.git /tmp/qlib_src
-
-      - name: Download Qlib Data
-        run: |
-          cd /tmp/qlib_src
-          python scripts/get_data.py qlib_data \
-            --target_dir ~/.qlib/qlib_data/cn_data \
-            --region cn \
-            --interval 1d
+          pip install akshare pandas
 
       - name: Run Small Cap Weekly Top5
-        env:
-          MLFLOW_ALLOW_FILE_STORE: "true"
         run: |
-          cd /tmp/qlib_src
-          cat > /tmp/smallcap.py << 'EOF'
-          import qlib
-          from qlib.config import REG_CN
-          from qlib.data import D
+          cat > /tmp/smallcap_ak.py << 'EOF'
+          import akshare as ak
           import pandas as pd
-          import numpy as np
 
-          qlib.init(provider_uri='~/.qlib/qlib_data/cn_data', region=REG_CN)
+          # 1. 获取全市场A股实时行情（含总市值）
+          print("正在获取全市场A股数据...")
+          df = ak.stock_zh_a_spot_em()
+          print(f"原始数据量: {len(df)}")
 
-          # 1. 获取全市场股票列表
-          instruments = D.instruments(market='all')
-          stock_list = D.list_instruments(instruments=instruments, start_time='2017-01-01', end_time='2020-08-01', as_list=True)
-          print(f"股票池数量: {len(stock_list)}")
+          # 2. 剔除ST股
+          df = df[~df['名称'].str.contains('ST', na=False)]
+          print(f"剔除ST后: {len(df)}")
 
-          # 2. 获取收盘价和成交量，计算“市值代理” = 收盘价 × 成交量
-          fields = ['$close', '$volume']
-          df = D.features(stock_list, fields, start_time='2017-01-01', end_time='2020-08-01', freq='day')
-          df.columns = ['close', 'volume']
-          df['mktcap_proxy'] = df['close'] * df['volume']
+          # 3. 剔除退市、停牌（可选）
+          df = df[df['总市值'].notna()]
+          df = df[df['总市值'] > 0]
+          print(f"剔除无效市值后: {len(df)}")
 
-          # 3. 按周分组，每周一选市值代理最小的5只
-          df = df.reset_index()
-          df['datetime'] = pd.to_datetime(df['datetime'])
-          df['week'] = df['datetime'].dt.isocalendar().week
-          df['year'] = df['datetime'].dt.year
-          df['year_week'] = df['year'].astype(str) + '-' + df['week'].astype(str)
+          # 4. 按总市值升序排序，选最小的5只
+          df_sorted = df.sort_values('总市值', ascending=True)
+          top5 = df_sorted.head(5)
 
-          # 每周取第一个交易日
-          weekly_dates = df.groupby('year_week')['datetime'].min().values
+          # 5. 输出结果
+          print("\n=== 本周小市值 Top5 ===")
+          print(top5[['代码', '名称', '最新价', '总市值']].to_string(index=False))
 
-          # 4. 构造信号：每周一，市值代理最小的5只分数设为1，其他为0
-          df['score'] = 0.0
-          for date in weekly_dates:
-              day_df = df[df['datetime'] == date]
-              if len(day_df) == 0:
-                  continue
-              # 选市值代理最小的5只
-              top5 = day_df.nsmallest(5, 'mktcap_proxy')
-              df.loc[top5.index, 'score'] = 1.0
-
-          # 5. 把信号转成Qlib需要的格式
-          signal = df.set_index(['datetime', 'instrument'])['score'].to_frame()
-          signal.columns = ['score']
-
-          # 6. 输出信号统计
-          print("信号生成完成")
-          print(f"总交易日数: {df['datetime'].nunique()}")
-          print(f"有信号的交易日数: {len(weekly_dates)}")
-          print("前5行信号:")
-          print(signal[signal['score'] > 0].head())
-
-          # 7. 保存信号，供后续回测使用
-          signal.to_pickle('/tmp/smallcap_signal.pkl')
-          print("信号已保存到 /tmp/smallcap_signal.pkl")
+          # 6. 保存结果
+          top5.to_csv('/tmp/smallcap_top5.csv', index=False)
+          print("\n结果已保存到 /tmp/smallcap_top5.csv")
           EOF
-          python /tmp/smallcap.py
+          python /tmp/smallcap_ak.py
